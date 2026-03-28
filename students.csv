@@ -1,8 +1,2 @@
-ID,Name,Age,Class,Image,Date
-d8457534,nishat67,12,6,images/d8457534.png,2026-03-28
-f518c75d,nuri,28,class 70,images/f518c75d.png,2026-03-28
-69ce3746,nuri23,30,class 7,images/69ce3746.png,2026-03-28
-1d4ea6dc,akash,27,class 10,,2026-03-28
-72aea18e,nirob,28,class 10,,2026-03-28
-STU-6B8714,esha,20,class 1,19,2026-03-28
-STU-2EF693,esha,20,class 1,19,2026-03-28
+ID,Name,Age,Class,Roll,Gender,Phone,Email,Address,Father_Name,Father_Phone,Father_Occupation,Mother_Name,Mother_Phone,Mother_Occupation,Date
+STU-944C4C,nishat,10,class 1,1,Male,92389349874,nishat@gmail.com,dhaka,mr safiqul islam ,94934839,,mst nazma,45824543,,2026-03-28
