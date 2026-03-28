@@ -1,2 +1,5 @@
 ID,Name,Age,Class,Roll,Gender,Phone,Email,Address,Father_Name,Father_Phone,Father_Occupation,Mother_Name,Mother_Phone,Mother_Occupation,Date
-STU-944C4C,nishat,10,class 1,1,Male,92389349874,nishat@gmail.com,dhaka,mr safiqul islam ,94934839,,mst nazma,45824543,,2026-03-28
+STU-944C4C,nishat,10,class 1,1,Male,92389349874.0,nishat@gmail.com,dhaka,mr safiqul islam ,94934839.0,,mst nazma,45824543.0,,2026-03-28
+STU-9675F3,nishat,10,class 1,1,Male,,,,,,,,,,2026-03-28
+STU-D5045C,nishu,10,class 1,1,Male,,,,,,,,,,2026-03-28
+STU-B30E6B,nuri,10,class 1,1,Male,,,,,,,,,,2026-03-28
