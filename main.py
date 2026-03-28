@@ -5,27 +5,29 @@ from fpdf import FPDF
 from datetime import datetime
 import uuid
 
-# ---------------- CONFIG ----------------
+# ---------------- FILES ----------------
 FILE = "students.csv"
+CLASS_FILE = "classes.csv"
+ATT_FILE = "attendance.csv"
+FEE_FILE = "fees.csv"
+MARK_FILE = "marks.csv"
 IMG_FOLDER = "images"
+
 os.makedirs(IMG_FOLDER, exist_ok=True)
 
 st.set_page_config(page_title="Student ERP", layout="wide")
 
 # ---------------- LOGIN ----------------
 def login():
-    st.markdown("## 🔐 Login System")
-
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    st.title("🔐 Login")
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
 
     if st.button("Login"):
-        if username == "admin" and password == "1234":
+        if u == "admin" and p == "1234":
             st.session_state["login"] = True
-            st.session_state["role"] = "admin"
         else:
             st.session_state["login"] = True
-            st.session_state["role"] = "user"
 
 if "login" not in st.session_state:
     st.session_state["login"] = False
@@ -35,203 +37,209 @@ if not st.session_state["login"]:
     st.stop()
 
 # ---------------- LOAD DATA ----------------
-if os.path.exists(FILE):
-    df = pd.read_csv(FILE)
-    df = df.reindex(columns=["ID","Name","Age","Class","Image","Date"])
-    df["Image"] = df["Image"].fillna("").astype(str)
-else:
-    df = pd.DataFrame(columns=["ID","Name","Age","Class","Image","Date"])
+def load_csv(file, cols):
+    if os.path.exists(file):
+        return pd.read_csv(file)
+    return pd.DataFrame(columns=cols)
+
+df = load_csv(FILE, ["ID","Name","Age","Class","Image","Date"])
+class_df = load_csv(CLASS_FILE, ["Class"])
+att_df = load_csv(ATT_FILE, ["ID","Date","Status"])
+fee_df = load_csv(FEE_FILE, ["ID","Amount","Status","Date"])
+mark_df = load_csv(MARK_FILE, ["ID","Subject","Marks"])
 
 # ---------------- SIDEBAR ----------------
-st.sidebar.title("🎓 Student ERP")
-
 menu = st.sidebar.selectbox("Menu", [
-    "Dashboard",
-    "Manage Students",
-    "ID Card",
-    "Backup/Restore"
+    "Dashboard","Class Setup","Manage Students",
+    "Attendance","Fees","Marks","ID Card","Backup"
 ])
-
-if st.sidebar.button("🚪 Logout"):
-    st.session_state["login"] = False
-    st.rerun()
 
 # ---------------- DASHBOARD ----------------
 if menu == "Dashboard":
     st.title("📊 Dashboard")
 
-    col1, col2, col3 = st.columns(3)
+    st.markdown("""
+    <style>
+    .card{padding:20px;border-radius:15px;background:#111827;color:white;text-align:center}
+    </style>
+    """, unsafe_allow_html=True)
 
-    col1.metric("👨‍🎓 Students", len(df))
-    col2.metric("🎂 Avg Age", int(df["Age"].mean()) if len(df)>0 else 0)
-    col3.metric("🏫 Classes", df["Class"].nunique() if len(df)>0 else 0)
+    c1,c2,c3 = st.columns(3)
+    c1.markdown(f"<div class='card'>👨‍🎓<br>{len(df)}</div>", True)
+    c2.markdown(f"<div class='card'>🎂<br>{int(df['Age'].mean()) if len(df)>0 else 0}</div>", True)
+    c3.markdown(f"<div class='card'>🏫<br>{df['Class'].nunique()}</div>", True)
 
-    st.markdown("### 📊 Class Distribution")
-    if len(df) > 0:
-        st.bar_chart(df["Class"].value_counts())
+    # Attendance %
+    if len(att_df)>0:
+        p = len(att_df[att_df["Status"]=="Present"])
+        t = len(att_df)
+        st.metric("📅 Attendance %", f"{round((p/t)*100,2)}%")
 
-    st.markdown("### 📈 Age Chart")
-    if len(df) > 0:
-        st.line_chart(df["Age"])
+    # Fees
+    if len(fee_df)>0:
+        paid = fee_df[fee_df["Status"]=="Paid"]["Amount"].sum()
+        due = fee_df[fee_df["Status"]=="Due"]["Amount"].sum()
+        st.metric("💵 Paid", paid)
+        st.metric("❗ Due", due)
 
-# ---------------- MANAGE ----------------
+    st.bar_chart(df["Class"].value_counts())
+
+# ---------------- CLASS SETUP ----------------
+elif menu == "Class Setup":
+    st.title("🏫 Class Setup")
+
+    new_class = st.text_input("New Class")
+
+    if st.button("Add"):
+        if new_class:
+            class_df = pd.concat([class_df, pd.DataFrame([[new_class]],columns=["Class"])])
+            class_df.to_csv(CLASS_FILE,index=False)
+            st.success("Added")
+
+    st.dataframe(class_df)
+
+# ---------------- STUDENT ----------------
 elif menu == "Manage Students":
-    st.title("🎓 Manage Students")
+    st.title("🎓 Students")
 
-    # ---- ADD ----
-    st.subheader("➕ Add Student")
+    name = st.text_input("Name")
+    age = st.number_input("Age",1,100)
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        name = st.text_input("Name")
-    with col2:
-        age = st.number_input("Age", 1, 100)
-    with col3:
+    if len(class_df)>0:
+        student_class = st.selectbox("Class", class_df["Class"])
+    else:
         student_class = st.text_input("Class")
 
-    image = st.file_uploader("Upload Photo", type=["jpg","png"])
-    camera = st.camera_input("Take Photo")
-
-    if camera:
-        image = camera
-
-    if image:
-        st.image(image, width=120)
+    image = st.file_uploader("Photo")
 
     if st.button("Add Student"):
-        if name.strip() and student_class.strip():
-            new_id = str(uuid.uuid4())[:8]
-            date = datetime.now().strftime("%Y-%m-%d")
+        new_id = str(uuid.uuid4())[:8]
+        date = datetime.now().strftime("%Y-%m-%d")
 
-            img_path = ""
-            if image:
-                img_path = os.path.join(IMG_FOLDER, f"{new_id}.png")
-                with open(img_path, "wb") as f:
-                    f.write(image.getbuffer())
+        img_path=""
+        if image:
+            img_path = os.path.join(IMG_FOLDER,f"{new_id}.png")
+            with open(img_path,"wb") as f:
+                f.write(image.getbuffer())
 
-            new_data = pd.DataFrame(
-                [[new_id, name, age, student_class, img_path, date]],
-                columns=["ID","Name","Age","Class","Image","Date"]
-            )
+        new = pd.DataFrame([[new_id,name,age,student_class,img_path,date]],columns=df.columns)
+        df = pd.concat([df,new])
+        df.to_csv(FILE,index=False)
+        st.success("Added")
 
-            df = pd.concat([df, new_data], ignore_index=True)
-            df.to_csv(FILE, index=False)
+    st.dataframe(df)
 
-            st.toast("Student Added 🎉")
+# ---------------- ATTENDANCE ----------------
+elif menu == "Attendance":
+    st.title("📅 Attendance")
 
-    # ---- FILTER ----
-    st.subheader("🎯 Filter")
+    if len(df)>0:
+        idx = st.selectbox("Student", df.index)
+        student = df.loc[idx]
 
-    df_display = df.copy()
+        status = st.radio("Status",["Present","Absent"])
 
-    if len(df) > 0:
-        selected_class = st.selectbox("Class", ["All"] + list(df["Class"].unique()))
-        if selected_class != "All":
-            df_display = df_display[df_display["Class"] == selected_class]
+        if st.button("Mark"):
+            new = pd.DataFrame([[student["ID"],datetime.now().strftime("%Y-%m-%d"),status]],
+                               columns=att_df.columns)
+            att_df = pd.concat([att_df,new])
+            att_df.to_csv(ATT_FILE,index=False)
+            st.success("Done")
 
-    search = st.text_input("Search Name")
-    if search:
-        df_display = df_display[df_display["Name"].str.contains(search, case=False)]
+    st.dataframe(att_df)
 
-    # ---- TABLE ----
-    st.subheader("📋 Student List")
-    st.dataframe(df_display, use_container_width=True)
+# ---------------- FEES ----------------
+elif menu == "Fees":
+    st.title("💰 Fees")
 
-    st.download_button("📥 Download CSV", df.to_csv(index=False), "students.csv")
+    if len(df)>0:
+        idx = st.selectbox("Student", df.index)
+        student = df.loc[idx]
 
-    # ---- DETAILS CARD ----
-    st.subheader("👤 Profile")
+        amt = st.number_input("Amount",0)
+        status = st.selectbox("Status",["Paid","Due"])
 
-    if len(df_display) > 0:
-        idx = st.selectbox("Select Student", df_display.index)
-        student = df_display.loc[idx]
+        if st.button("Add Fee"):
+            new = pd.DataFrame([[student["ID"],amt,status,datetime.now().strftime("%Y-%m-%d")]],
+                               columns=fee_df.columns)
+            fee_df = pd.concat([fee_df,new])
+            fee_df.to_csv(FEE_FILE,index=False)
+            st.success("Added")
 
-        st.markdown(f"""
-        <div style="padding:20px;border-radius:10px;background:#f0f2f6">
-        <h3>👤 {student['Name']}</h3>
-        <p>🆔 {student['ID']}</p>
-        <p>🎂 {student['Age']}</p>
-        <p>📚 {student['Class']}</p>
-        <p>📅 {student['Date']}</p>
-        </div>
-        """, unsafe_allow_html=True)
+    st.dataframe(fee_df)
 
-        if student["Image"] and os.path.exists(student["Image"]):
-            st.image(student["Image"], width=150)
+# ---------------- MARKS ----------------
+elif menu == "Marks":
+    st.title("📚 Marks")
 
-    # ---- EDIT / DELETE (ADMIN ONLY) ----
-    if st.session_state["role"] == "admin":
+    def grade(m):
+        if m>=80:return "A+"
+        elif m>=70:return "A"
+        elif m>=60:return "B"
+        else:return "C"
 
-        st.subheader("✏️ Edit")
-        if len(df) > 0:
-            edit_idx = st.selectbox("Row", df.index)
+    if len(df)>0:
+        idx = st.selectbox("Student", df.index)
+        student = df.loc[idx]
 
-            new_name = st.text_input("New Name", df.loc[edit_idx]["Name"])
-            new_age = st.number_input("New Age", 1, 100, value=int(df.loc[edit_idx]["Age"]))
-            new_class = st.text_input("New Class", df.loc[edit_idx]["Class"])
+        sub = st.text_input("Subject")
+        m = st.number_input("Marks",0,100)
 
-            if st.button("Update"):
-                df.at[edit_idx, "Name"] = new_name
-                df.at[edit_idx, "Age"] = new_age
-                df.at[edit_idx, "Class"] = new_class
-                df.to_csv(FILE, index=False)
-                st.success("Updated!")
+        if st.button("Add Marks"):
+            new = pd.DataFrame([[student["ID"],sub,m]],columns=mark_df.columns)
+            mark_df = pd.concat([mark_df,new])
+            mark_df.to_csv(MARK_FILE,index=False)
+            st.success("Added")
 
-        st.subheader("❌ Delete")
-        if len(df) > 0:
-            del_idx = st.number_input("Row", 0, len(df)-1)
+    mark_df["Grade"] = mark_df["Marks"].apply(grade)
 
-            if st.button("Delete"):
-                df = df.drop(del_idx).reset_index(drop=True)
-                df.to_csv(FILE, index=False)
-                st.warning("Deleted!")
+    st.dataframe(mark_df)
+
+    # Result
+    st.subheader("Result")
+    if len(df)>0:
+        idx = st.selectbox("Result Student", df.index)
+        student = df.loc[idx]
+
+        sm = mark_df[mark_df["ID"]==student["ID"]]
+        st.dataframe(sm)
+
+        if len(sm)>0:
+            st.metric("Avg", round(sm["Marks"].mean(),2))
+            st.bar_chart(sm.set_index("Subject"))
 
 # ---------------- ID CARD ----------------
 elif menu == "ID Card":
-    st.title("🪪 ID Card Generator")
+    st.title("🪪 ID Card")
 
-    if len(df) > 0:
-        idx = st.selectbox("Select Student", df.index)
+    if len(df)>0:
+        idx = st.selectbox("Student", df.index)
 
         if st.button("Generate"):
-            student = df.loc[idx]
+            s = df.loc[idx]
 
             pdf = FPDF()
             pdf.add_page()
 
-            pdf.set_fill_color(0,102,204)
-            pdf.rect(10,10,190,40,'F')
+            pdf.set_font("Arial","B",16)
+            pdf.cell(0,20,"STUDENT ID CARD",ln=True,align="C")
 
-            pdf.set_text_color(255,255,255)
-            pdf.set_font("Arial",'B',16)
-            pdf.cell(0,20,"STUDENT ID CARD", ln=True, align='C')
-
-            pdf.set_text_color(0,0,0)
-            pdf.ln(10)
-
-            pdf.cell(0,10,f"ID: {student['ID']}", ln=True)
-            pdf.cell(0,10,f"Name: {student['Name']}", ln=True)
-            pdf.cell(0,10,f"Class: {student['Class']}", ln=True)
-
-            if student["Image"] and os.path.exists(student["Image"]):
-                pdf.image(student["Image"], x=80, y=60, w=40)
+            pdf.cell(0,10,f"Name: {s['Name']}",ln=True)
+            pdf.cell(0,10,f"Class: {s['Class']}",ln=True)
 
             pdf_bytes = pdf.output(dest='S').encode('latin1')
-
-            st.download_button("📥 Download ID", pdf_bytes, "id_card.pdf")
+            st.download_button("Download",pdf_bytes,"id.pdf")
 
 # ---------------- BACKUP ----------------
-elif menu == "Backup/Restore":
-    st.title("📦 Backup System")
+elif menu == "Backup":
+    st.title("📦 Backup")
 
-    if st.button("Backup Data"):
-        df.to_csv("backup.csv", index=False)
-        st.success("Backup Saved!")
+    if st.button("Backup"):
+        df.to_csv("backup.csv",index=False)
+        st.success("Saved")
 
-    file = st.file_uploader("Restore CSV", type=["csv"])
-
-    if file:
-        df = pd.read_csv(file)
-        df.to_csv(FILE, index=False)
-        st.success("Data Restored!")
+    f = st.file_uploader("Restore",type=["csv"])
+    if f:
+        df = pd.read_csv(f)
+        df.to_csv(FILE,index=False)
+        st.success("Restored")
