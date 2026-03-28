@@ -2,23 +2,30 @@ import streamlit as st
 import pandas as pd
 import os
 from fpdf import FPDF
+from datetime import datetime
+import uuid
 
-# ---------------- FILE & FOLDER ----------------
+# ---------------- CONFIG ----------------
 FILE = "students.csv"
 IMG_FOLDER = "images"
 os.makedirs(IMG_FOLDER, exist_ok=True)
 
+st.set_page_config(page_title="Student ERP", layout="wide")
+
 # ---------------- LOGIN ----------------
 def login():
-    st.title("🔐 Login System")
-    username = st.text_input("Username", key="login_user")
-    password = st.text_input("Password", type="password", key="login_pass")
+    st.markdown("## 🔐 Login System")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
 
     if st.button("Login"):
         if username == "admin" and password == "1234":
             st.session_state["login"] = True
+            st.session_state["role"] = "admin"
         else:
-            st.error("Wrong credentials!")
+            st.session_state["login"] = True
+            st.session_state["role"] = "user"
 
 if "login" not in st.session_state:
     st.session_state["login"] = False
@@ -30,136 +37,201 @@ if not st.session_state["login"]:
 # ---------------- LOAD DATA ----------------
 if os.path.exists(FILE):
     df = pd.read_csv(FILE)
-
-    # ✅ Fix columns + NaN
-    df = df.reindex(columns=["Name", "Age", "Class", "Image"])
+    df = df.reindex(columns=["ID","Name","Age","Class","Image","Date"])
     df["Image"] = df["Image"].fillna("").astype(str)
 else:
-    df = pd.DataFrame(columns=["Name", "Age", "Class", "Image"])
+    df = pd.DataFrame(columns=["ID","Name","Age","Class","Image","Date"])
 
-st.set_page_config(page_title="Student Management PRO", layout="wide")
-st.title("🎓 Student Management PRO")
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("🎓 Student ERP")
 
-# ---------------- ADD STUDENT ----------------
-st.subheader("➕ Add Student")
-col1, col2, col3 = st.columns(3)
+menu = st.sidebar.selectbox("Menu", [
+    "Dashboard",
+    "Manage Students",
+    "ID Card",
+    "Backup/Restore"
+])
 
-with col1:
-    name = st.text_input("Name")
-with col2:
-    age = st.number_input("Age", 1, 100)
-with col3:
-    student_class = st.text_input("Class")
+if st.sidebar.button("🚪 Logout"):
+    st.session_state["login"] = False
+    st.rerun()
 
-image = st.file_uploader("Upload Photo", type=["jpg", "png"])
+# ---------------- DASHBOARD ----------------
+if menu == "Dashboard":
+    st.title("📊 Dashboard")
 
-if st.button("Add Student"):
-    if name.strip() and student_class.strip():
-        img_path = ""
+    col1, col2, col3 = st.columns(3)
 
-        if image:
-            img_path = os.path.join(IMG_FOLDER, image.name)
-            with open(img_path, "wb") as f:
-                f.write(image.getbuffer())
+    col1.metric("👨‍🎓 Students", len(df))
+    col2.metric("🎂 Avg Age", int(df["Age"].mean()) if len(df)>0 else 0)
+    col3.metric("🏫 Classes", df["Class"].nunique() if len(df)>0 else 0)
 
-        new_data = pd.DataFrame(
-            [[name, age, student_class, img_path]],
-            columns=["Name", "Age", "Class", "Image"]
-        )
+    st.markdown("### 📊 Class Distribution")
+    if len(df) > 0:
+        st.bar_chart(df["Class"].value_counts())
 
-        df = pd.concat([df, new_data], ignore_index=True)
-        df.to_csv(FILE, index=False)
-        st.success("✅ Student Added!")
+    st.markdown("### 📈 Age Chart")
+    if len(df) > 0:
+        st.line_chart(df["Age"])
 
-# ---------------- SEARCH ----------------
-st.subheader("🔍 Search Student")
-search = st.text_input("Search by Name")
+# ---------------- MANAGE ----------------
+elif menu == "Manage Students":
+    st.title("🎓 Manage Students")
 
-df_display = df.copy()
-if search:
-    df_display = df_display[df_display["Name"].str.contains(search, case=False)]
+    # ---- ADD ----
+    st.subheader("➕ Add Student")
 
-# ---------------- TABLE ----------------
-st.subheader("📋 Student List")
-st.dataframe(df_display, use_container_width=True)
-
-# ---------------- DETAILS ----------------
-st.subheader("👤 Student Details")
-if len(df_display) > 0:
-    idx = st.selectbox("Select Student", df_display.index)
-    student = df_display.loc[idx]
-
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.write(f"**Name:** {student['Name']}")
-        st.write(f"**Age:** {student['Age']}")
-        st.write(f"**Class:** {student['Class']}")
-
+        name = st.text_input("Name")
     with col2:
-        img = student["Image"]
-        if isinstance(img, str) and img.strip() != "" and os.path.exists(img):
-            st.image(img, width=200)
+        age = st.number_input("Age", 1, 100)
+    with col3:
+        student_class = st.text_input("Class")
 
-# ---------------- EDIT ----------------
-st.subheader("✏️ Edit Student")
-if len(df) > 0:
-    edit_idx = st.selectbox("Select Row", df.index)
+    image = st.file_uploader("Upload Photo", type=["jpg","png"])
+    camera = st.camera_input("Take Photo")
 
-    new_name = st.text_input("New Name", df.loc[edit_idx]["Name"])
-    new_age = st.number_input("New Age", 1, 100, value=int(df.loc[edit_idx]["Age"]))
-    new_class = st.text_input("New Class", df.loc[edit_idx]["Class"])
+    if camera:
+        image = camera
 
-    if st.button("Update"):
-        df.at[edit_idx, "Name"] = new_name
-        df.at[edit_idx, "Age"] = new_age
-        df.at[edit_idx, "Class"] = new_class
+    if image:
+        st.image(image, width=120)
+
+    if st.button("Add Student"):
+        if name.strip() and student_class.strip():
+            new_id = str(uuid.uuid4())[:8]
+            date = datetime.now().strftime("%Y-%m-%d")
+
+            img_path = ""
+            if image:
+                img_path = os.path.join(IMG_FOLDER, f"{new_id}.png")
+                with open(img_path, "wb") as f:
+                    f.write(image.getbuffer())
+
+            new_data = pd.DataFrame(
+                [[new_id, name, age, student_class, img_path, date]],
+                columns=["ID","Name","Age","Class","Image","Date"]
+            )
+
+            df = pd.concat([df, new_data], ignore_index=True)
+            df.to_csv(FILE, index=False)
+
+            st.toast("Student Added 🎉")
+
+    # ---- FILTER ----
+    st.subheader("🎯 Filter")
+
+    df_display = df.copy()
+
+    if len(df) > 0:
+        selected_class = st.selectbox("Class", ["All"] + list(df["Class"].unique()))
+        if selected_class != "All":
+            df_display = df_display[df_display["Class"] == selected_class]
+
+    search = st.text_input("Search Name")
+    if search:
+        df_display = df_display[df_display["Name"].str.contains(search, case=False)]
+
+    # ---- TABLE ----
+    st.subheader("📋 Student List")
+    st.dataframe(df_display, use_container_width=True)
+
+    st.download_button("📥 Download CSV", df.to_csv(index=False), "students.csv")
+
+    # ---- DETAILS CARD ----
+    st.subheader("👤 Profile")
+
+    if len(df_display) > 0:
+        idx = st.selectbox("Select Student", df_display.index)
+        student = df_display.loc[idx]
+
+        st.markdown(f"""
+        <div style="padding:20px;border-radius:10px;background:#f0f2f6">
+        <h3>👤 {student['Name']}</h3>
+        <p>🆔 {student['ID']}</p>
+        <p>🎂 {student['Age']}</p>
+        <p>📚 {student['Class']}</p>
+        <p>📅 {student['Date']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if student["Image"] and os.path.exists(student["Image"]):
+            st.image(student["Image"], width=150)
+
+    # ---- EDIT / DELETE (ADMIN ONLY) ----
+    if st.session_state["role"] == "admin":
+
+        st.subheader("✏️ Edit")
+        if len(df) > 0:
+            edit_idx = st.selectbox("Row", df.index)
+
+            new_name = st.text_input("New Name", df.loc[edit_idx]["Name"])
+            new_age = st.number_input("New Age", 1, 100, value=int(df.loc[edit_idx]["Age"]))
+            new_class = st.text_input("New Class", df.loc[edit_idx]["Class"])
+
+            if st.button("Update"):
+                df.at[edit_idx, "Name"] = new_name
+                df.at[edit_idx, "Age"] = new_age
+                df.at[edit_idx, "Class"] = new_class
+                df.to_csv(FILE, index=False)
+                st.success("Updated!")
+
+        st.subheader("❌ Delete")
+        if len(df) > 0:
+            del_idx = st.number_input("Row", 0, len(df)-1)
+
+            if st.button("Delete"):
+                df = df.drop(del_idx).reset_index(drop=True)
+                df.to_csv(FILE, index=False)
+                st.warning("Deleted!")
+
+# ---------------- ID CARD ----------------
+elif menu == "ID Card":
+    st.title("🪪 ID Card Generator")
+
+    if len(df) > 0:
+        idx = st.selectbox("Select Student", df.index)
+
+        if st.button("Generate"):
+            student = df.loc[idx]
+
+            pdf = FPDF()
+            pdf.add_page()
+
+            pdf.set_fill_color(0,102,204)
+            pdf.rect(10,10,190,40,'F')
+
+            pdf.set_text_color(255,255,255)
+            pdf.set_font("Arial",'B',16)
+            pdf.cell(0,20,"STUDENT ID CARD", ln=True, align='C')
+
+            pdf.set_text_color(0,0,0)
+            pdf.ln(10)
+
+            pdf.cell(0,10,f"ID: {student['ID']}", ln=True)
+            pdf.cell(0,10,f"Name: {student['Name']}", ln=True)
+            pdf.cell(0,10,f"Class: {student['Class']}", ln=True)
+
+            if student["Image"] and os.path.exists(student["Image"]):
+                pdf.image(student["Image"], x=80, y=60, w=40)
+
+            pdf_bytes = pdf.output(dest='S').encode('latin1')
+
+            st.download_button("📥 Download ID", pdf_bytes, "id_card.pdf")
+
+# ---------------- BACKUP ----------------
+elif menu == "Backup/Restore":
+    st.title("📦 Backup System")
+
+    if st.button("Backup Data"):
+        df.to_csv("backup.csv", index=False)
+        st.success("Backup Saved!")
+
+    file = st.file_uploader("Restore CSV", type=["csv"])
+
+    if file:
+        df = pd.read_csv(file)
         df.to_csv(FILE, index=False)
-        st.success("✅ Updated!")
-
-# ---------------- DELETE ----------------
-st.subheader("❌ Delete Student")
-if len(df) > 0:
-    del_idx = st.number_input("Row Number", 0, len(df) - 1, step=1)
-
-    if st.button("Delete"):
-        df = df.drop(del_idx).reset_index(drop=True)
-        df.to_csv(FILE, index=False)
-        st.warning("Deleted!")
-
-# ---------------- PDF ----------------
-# ---------------- PDF + DOWNLOAD ----------------
-st.subheader("🪪 ID Card")
-
-if len(df) > 0:
-    id_idx = st.selectbox("Select Student for ID", df.index)
-
-    if st.button("Generate PDF"):
-        student = df.loc[id_idx]
-
-        pdf = FPDF()
-        pdf.add_page()
-
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(200, 10, "Student ID Card", ln=True, align='C')
-
-        pdf.set_font("Arial", size=12)
-        pdf.ln(10)
-
-        pdf.cell(200, 10, f"Name: {student['Name']}", ln=True)
-        pdf.cell(200, 10, f"Age: {student['Age']}", ln=True)
-        pdf.cell(200, 10, f"Class: {student['Class']}", ln=True)
-
-        img = student["Image"]
-        if isinstance(img, str) and img.strip() != "" and os.path.exists(img):
-            pdf.image(img, x=80, y=60, w=40)
-
-        # 🔥 MEMORY BUFFER
-        pdf_bytes = pdf.output(dest='S').encode('latin1')
-
-        st.download_button(
-            label="📥 Download ID Card",
-            data=pdf_bytes,
-            file_name="id_card.pdf",
-            mime="application/pdf"
-        )
+        st.success("Data Restored!")
